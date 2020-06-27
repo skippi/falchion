@@ -2,6 +2,7 @@ use read_process_memory::{copy_address, Pid, TryIntoProcessHandle};
 use std::convert::TryInto;
 use std::io;
 use std::io::{Error, ErrorKind};
+use sysinfo::{ProcessExt, System, SystemExt};
 
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
 const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
@@ -33,7 +34,16 @@ fn read_stage(pid: Pid) -> io::Result<u8> {
 }
 
 fn main() {
-    let stage = read_stage(9552 as Pid).unwrap();
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    let dolphin_pid = system
+        .get_processes()
+        .iter()
+        .find(|&(_, proc)| proc.name() == "Dolphin.exe")
+        .map(|(pid, _)| pid)
+        .unwrap();
+
+    let stage = read_stage(*dolphin_pid as Pid).unwrap();
     println!("{}", stage);
-    println!("Hello, world!");
 }
