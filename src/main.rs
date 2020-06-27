@@ -1,69 +1,11 @@
-use read_process_memory::{copy_address, TryIntoProcessHandle};
+mod game;
+
+use game::Error;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
-use sysinfo::{Pid, ProcessExt, System, SystemExt};
 
 const MUSIC: &str = "C:/src/github.com/skippi/falchion/SnowDrop.mp3";
-const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
-const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
-
-type Result<T> = std::result::Result<T, Error>;
-
-struct Game {
-    pid: Pid,
-}
-
-impl Game {
-    fn locate() -> Result<Game> {
-        let mut system = System::new_all();
-        system.refresh_all();
-
-        let pid = system
-            .get_processes()
-            .iter()
-            .find(|&(_, proc)| proc.name() == "Dolphin.exe")
-            .map(|(pid, _)| *pid)
-            .ok_or(Error::DolphinNotFound)?;
-
-        Ok(Game { pid })
-    }
-
-    fn stage(&self) -> Result<u8> {
-        self.read_byte(LogicalAddress(0x8043208B))
-    }
-
-    fn read_byte(&self, addr: LogicalAddress) -> Result<u8> {
-        let handle = (self.pid as read_process_memory::Pid)
-            .try_into_process_handle()
-            .map_err(|_| Error::DolphinNotFound)?;
-        let physical_address = PhysicalAddress::from(addr);
-        let bytes =
-            copy_address(physical_address.0, 1, &handle).map_err(|_| Error::InvalidMemoryRead)?;
-
-        let array: [u8; 1] = bytes.as_slice().try_into().unwrap();
-
-        Ok(u8::from_le_bytes(array))
-    }
-}
-
-#[derive(Debug)]
-enum Error {
-    DolphinNotFound,
-    InvalidMemoryRead,
-    SongNotFound,
-}
-
-struct LogicalAddress(usize);
-
-struct PhysicalAddress(usize);
-
-impl From<LogicalAddress> for PhysicalAddress {
-    fn from(addr: LogicalAddress) -> Self {
-        PhysicalAddress(addr.0 - LOGICAL_BASE_ADDRESS.0 + PHYSICAL_BASE_ADDRESS.0)
-    }
-}
 
 #[derive(Debug)]
 enum Song {
@@ -71,7 +13,7 @@ enum Song {
 }
 
 impl Song {
-    fn play(&self, device: &rodio::Device) -> Result<()> {
+    fn play(&self, device: &rodio::Device) -> game::Result<()> {
         match self {
             Song::LocalFile(path) => {
                 let file = File::open(path).map_err(|_| Error::SongNotFound)?;
@@ -85,11 +27,11 @@ impl Song {
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> game::Result<()> {
     let mut config: HashMap<u8, Vec<Song>> = HashMap::new();
     config.insert(8, vec![Song::LocalFile(MUSIC.to_string())]);
 
-    let game = Game::locate()?;
+    let game = game::Game::locate()?;
     let stage = game.stage()?;
     let songs = config.entry(stage).or_insert(vec![]);
 
