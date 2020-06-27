@@ -1,7 +1,10 @@
 use read_process_memory::{copy_address, TryIntoProcessHandle};
 use std::convert::TryInto;
+use std::fs::File;
+use std::io::BufReader;
 use sysinfo::{Pid, ProcessExt, System, SystemExt};
 
+const MUSIC: &str = "C:/src/github.com/skippi/falchion/SnowDrop.mp3";
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
 const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
 
@@ -62,7 +65,20 @@ impl From<LogicalAddress> for PhysicalAddress {
 
 fn main() -> Result<()> {
     let game = Game::locate()?;
+
+    let stage = game.stage()?;
+    if stage != 3 {
+        panic!("Wrong stage");
+    }
+
     println!("{}", game.stage()?);
+
+    let device = rodio::default_output_device().unwrap();
+    let music_file = File::open(MUSIC).unwrap();
+
+    rodio::play_once(&device, BufReader::new(music_file))
+        .unwrap()
+        .sleep_until_end();
 
     Ok(())
 }

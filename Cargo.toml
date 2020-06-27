@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 read-process-memory = "^0.1"
 sysinfo = "^0.14"
+rodio = "^0.11"
