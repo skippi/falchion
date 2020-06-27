@@ -1,11 +1,54 @@
-use read_process_memory::{copy_address, Pid, TryIntoProcessHandle};
+use read_process_memory::{copy_address, TryIntoProcessHandle};
 use std::convert::TryInto;
-use std::io;
-use std::io::{Error, ErrorKind};
-use sysinfo::{ProcessExt, System, SystemExt};
+use sysinfo::{Pid, ProcessExt, System, SystemExt};
 
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
 const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
+
+type Result<T> = std::result::Result<T, Error>;
+
+struct Game {
+    pid: Pid,
+}
+
+impl Game {
+    fn locate() -> Result<Game> {
+        let mut system = System::new_all();
+        system.refresh_all();
+
+        let pid = system
+            .get_processes()
+            .iter()
+            .find(|&(_, proc)| proc.name() == "Dolphin.exe")
+            .map(|(pid, _)| *pid)
+            .ok_or(Error::DolphinNotFound)?;
+
+        Ok(Game { pid })
+    }
+
+    fn stage(&self) -> Result<u8> {
+        self.read_byte(LogicalAddress(0x8043208B))
+    }
+
+    fn read_byte(&self, addr: LogicalAddress) -> Result<u8> {
+        let handle = (self.pid as read_process_memory::Pid)
+            .try_into_process_handle()
+            .map_err(|_| Error::DolphinNotFound)?;
+        let physical_address = PhysicalAddress::from(addr);
+        let bytes =
+            copy_address(physical_address.0, 1, &handle).map_err(|_| Error::InvalidMemoryRead)?;
+
+        let array: [u8; 1] = bytes.as_slice().try_into().unwrap();
+
+        Ok(u8::from_le_bytes(array))
+    }
+}
+
+#[derive(Debug)]
+enum Error {
+    DolphinNotFound,
+    InvalidMemoryRead,
+}
 
 struct LogicalAddress(usize);
 
@@ -17,33 +60,9 @@ impl From<LogicalAddress> for PhysicalAddress {
     }
 }
 
-fn read_byte(pid: Pid, address: LogicalAddress) -> io::Result<u8> {
-    let handle = pid.try_into_process_handle()?;
-    let physical_address = PhysicalAddress::from(address);
-    let bytes = copy_address(physical_address.0, 1, &handle)?;
+fn main() -> Result<()> {
+    let game = Game::locate()?;
+    println!("{}", game.stage()?);
 
-    let array: [u8; 1] = bytes[0..1]
-        .try_into()
-        .map_err(|e| Error::new(ErrorKind::Other, e))?;
-
-    Ok(u8::from_le_bytes(array))
-}
-
-fn read_stage(pid: Pid) -> io::Result<u8> {
-    read_byte(pid, LogicalAddress(0x8043208B))
-}
-
-fn main() {
-    let mut system = System::new_all();
-    system.refresh_all();
-
-    let dolphin_pid = system
-        .get_processes()
-        .iter()
-        .find(|&(_, proc)| proc.name() == "Dolphin.exe")
-        .map(|(pid, _)| pid)
-        .unwrap();
-
-    let stage = read_stage(*dolphin_pid as Pid).unwrap();
-    println!("{}", stage);
+    Ok(())
 }
