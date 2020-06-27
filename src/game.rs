@@ -24,6 +24,15 @@ impl From<LogicalAddress> for PhysicalAddress {
     }
 }
 
+#[derive(Debug, Eq, Hash)]
+pub struct StageId(pub u8);
+
+impl PartialEq for StageId {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 pub struct Game {
     pid: Pid,
 }
@@ -43,8 +52,9 @@ impl Game {
         Ok(Game { pid })
     }
 
-    pub fn stage(&self) -> Result<u8> {
+    pub fn stage(&self) -> Result<StageId> {
         self.read_byte(LogicalAddress(0x8043208B))
+            .map(|id| StageId(id))
     }
 
     fn read_byte(&self, addr: LogicalAddress) -> Result<u8> {
