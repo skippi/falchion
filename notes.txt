@@ -1,0 +1,6 @@
+Current Menu?: 0x8065CC14
+First Menu?: 0x8136F640
+- Seems to "free" memory when entering title screen or actual ingame match.
+First Menu Item?: 0x8136F674
+- Seems to be an array of pointers to menus. This marks the beginning of first
+  one.

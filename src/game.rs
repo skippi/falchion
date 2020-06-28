@@ -74,9 +74,21 @@ impl Dolphin {
         .map(|seconds| time::Duration::from_secs(seconds.into()))
         .map_err(|_| Error::InvalidMemoryRead)?;
 
+        let first_menu_item_byte = copy_address(
+            PhysicalAddress::from(LogicalAddress(0x8136F674)).0,
+            1,
+            &handle,
+        )
+        .map(|bytes| bytes[0])
+        .map_err(|_| Error::InvalidMemoryRead)?; // Complete hack. 0x8136F674 is the first menu item.
+
         let result = MatchInfo {
-            stage: stage,
-            time: time,
+            stage,
+            time,
+            status: match first_menu_item_byte {
+                0x81 => Status::InMenu, // Another hack. If addr starts with 0x81, then menu probably
+                _ => Status::InGame,
+            },
         };
 
         Ok(result)
@@ -87,4 +99,11 @@ impl Dolphin {
 pub struct MatchInfo {
     pub time: time::Duration,
     pub stage: StageId,
+    pub status: Status,
+}
+
+#[derive(Debug)]
+pub enum Status {
+    InMenu,
+    InGame,
 }
