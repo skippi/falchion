@@ -1,4 +1,5 @@
 use read_process_memory::{copy_address, TryIntoProcessHandle};
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use sysinfo::{Pid, ProcessExt, System, SystemExt};
 
@@ -24,7 +25,7 @@ impl From<LogicalAddress> for PhysicalAddress {
     }
 }
 
-#[derive(Debug, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Eq, Hash)]
 pub struct StageId(pub u8);
 
 impl PartialEq for StageId {

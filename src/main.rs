@@ -1,14 +1,42 @@
 mod game;
 
 use game::Error;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::io;
 use std::io::BufReader;
+use std::path::Path;
 
 const MUSIC: &str = "C:/src/github.com/skippi/falchion/SnowDrop.mp3";
 
+#[derive(Serialize, Deserialize)]
 struct Config {
     playlists: HashMap<game::StageId, Vec<Song>>,
+}
+
+impl Config {
+    fn open_or_create<P: AsRef<Path>>(path: P) -> io::Result<Config> {
+        let config_file = OpenOptions::new().write(true).create(true).open(&path)?;
+
+        serde_json::from_reader(config_file)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    fn save<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
+        let file = OpenOptions::new().write(true).create(true).open(&path)?;
+
+        serde_json::to_writer(&file, &self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    fn spoof() -> Config {
+        let mut default_config = Config::default();
+        default_config
+            .playlists
+            .insert(game::StageId(8), vec![Song::Local(MUSIC.to_string())]);
+
+        default_config
+    }
 }
 
 impl Default for Config {
@@ -19,7 +47,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 enum Song {
     Local(String),
 }
@@ -40,14 +68,19 @@ impl Song {
 }
 
 fn main() -> game::Result<()> {
-    let mut config = Config::default();
-    config
-        .playlists
-        .insert(game::StageId(8), vec![Song::Local(MUSIC.to_string())]);
+    let config = Config::open_or_create("config.json").unwrap_or(Config::spoof());
+
+    if let Err(e) = config.save("config.json") {
+        panic!(e);
+    }
 
     let game = game::Game::locate()?;
     let stage = game.stage()?;
-    let songs = config.playlists.entry(stage).or_insert(vec![]);
+    let songs = config
+        .playlists
+        .get(&stage)
+        .map(|s| s.as_slice())
+        .unwrap_or(&[]);
 
     println!("{:?}", game.stage()?);
 
