@@ -1,6 +1,6 @@
 use read_process_memory::{copy_address, TryIntoProcessHandle};
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
+use std::time;
 use sysinfo::{Pid, ProcessExt, System, SystemExt};
 
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
@@ -10,6 +10,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+    DolphinAccessDenied,
     DolphinNotFound,
     InvalidMemoryRead,
     SongNotFound,
@@ -25,21 +26,15 @@ impl From<LogicalAddress> for PhysicalAddress {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
 pub struct StageId(pub u8);
 
-impl PartialEq for StageId {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-pub struct Game {
+pub struct Dolphin {
     pid: Pid,
 }
 
-impl Game {
-    pub fn locate() -> Result<Game> {
+impl Dolphin {
+    pub fn locate() -> Result<Dolphin> {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -50,24 +45,33 @@ impl Game {
             .map(|(pid, _)| *pid)
             .ok_or(Error::DolphinNotFound)?;
 
-        Ok(Game { pid })
+        Ok(Dolphin { pid })
     }
 
-    pub fn stage(&self) -> Result<StageId> {
-        self.read_byte(LogicalAddress(0x8043208B))
-            .map(|id| StageId(id))
-    }
-
-    fn read_byte(&self, addr: LogicalAddress) -> Result<u8> {
+    pub fn poll_match_info(&self) -> Result<MatchInfo> {
         let handle = (self.pid as read_process_memory::Pid)
             .try_into_process_handle()
-            .map_err(|_| Error::DolphinNotFound)?;
-        let physical_address = PhysicalAddress::from(addr);
-        let bytes =
-            copy_address(physical_address.0, 1, &handle).map_err(|_| Error::InvalidMemoryRead)?;
+            .map_err(|_| Error::DolphinAccessDenied)?;
 
-        let array: [u8; 1] = bytes.as_slice().try_into().unwrap();
+        let stage = copy_address(
+            PhysicalAddress::from(LogicalAddress(0x8043208B)).0,
+            1,
+            &handle,
+        )
+        .map(|bytes| StageId(bytes[0]))
+        .map_err(|_| Error::InvalidMemoryRead)?;
 
-        Ok(u8::from_le_bytes(array))
+        let result = MatchInfo {
+            stage: stage,
+            time: time::Duration::from_secs(480),
+        };
+
+        Ok(result)
     }
+}
+
+#[derive(Debug)]
+pub struct MatchInfo {
+    pub time: time::Duration,
+    pub stage: StageId,
 }

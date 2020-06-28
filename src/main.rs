@@ -74,17 +74,18 @@ fn main() -> game::Result<()> {
         panic!(e);
     }
 
-    let game = game::Game::locate()?;
-    let stage = game.stage()?;
+    let device = rodio::default_output_device().unwrap();
+
+    let game = game::Dolphin::locate()?;
+    let match_info = game.poll_match_info()?;
     let songs = config
         .playlists
-        .get(&stage)
+        .get(&match_info.stage)
         .map(|s| s.as_slice())
         .unwrap_or(&[]);
 
-    println!("{:?}", game.stage()?);
+    println!("{:?}", match_info);
 
-    let device = rodio::default_output_device().unwrap();
     let song = songs.iter().next().ok_or(Error::SongNotFound)?;
     song.play(&device)
 }
