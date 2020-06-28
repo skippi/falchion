@@ -1,3 +1,4 @@
+use byteorder::{BigEndian, ReadBytesExt};
 use read_process_memory::{copy_address, TryIntoProcessHandle};
 use serde::{Deserialize, Serialize};
 use std::time;
@@ -61,9 +62,21 @@ impl Dolphin {
         .map(|bytes| StageId(bytes[0]))
         .map_err(|_| Error::InvalidMemoryRead)?;
 
+        let time = copy_address(
+            PhysicalAddress::from(LogicalAddress(0x8046B6C8)).0,
+            4,
+            &handle,
+        )
+        .and_then(|bytes| {
+            println!("{:?}", &bytes);
+            bytes.as_slice().read_u32::<BigEndian>()
+        })
+        .map(|seconds| time::Duration::from_secs(seconds.into()))
+        .map_err(|_| Error::InvalidMemoryRead)?;
+
         let result = MatchInfo {
             stage: stage,
-            time: time::Duration::from_secs(480),
+            time: time,
         };
 
         Ok(result)
