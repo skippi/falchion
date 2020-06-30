@@ -1,6 +1,5 @@
 mod game;
 
-use game::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -9,6 +8,15 @@ use std::io::BufReader;
 use std::path::Path;
 
 const MUSIC: &str = "C:/src/github.com/skippi/falchion/SnowDrop.mp3";
+
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug)]
+enum Error {
+    AudioDecodeFailed,
+    OutputDeviceNotFound,
+    SongNotFound,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Config {
@@ -63,12 +71,12 @@ enum Song {
 }
 
 impl Song {
-    fn play(&self, device: &rodio::Device) -> game::Result<rodio::Sink> {
+    fn play(&self, device: &rodio::Device) -> Result<rodio::Sink> {
         match self {
             Song::Local(path) => {
                 let file = File::open(path).map_err(|_| Error::SongNotFound)?;
                 rodio::play_once(&device, BufReader::new(file))
-                    .map_err(|_| game::Error::DolphinNotFound)
+                    .map_err(|_| Error::AudioDecodeFailed)
             }
         }
     }
@@ -87,7 +95,6 @@ struct App {
 enum State {
     WaitForGame,
     InGame(rodio::Sink),
-    Failure(String),
 }
 
 impl App {
@@ -98,30 +105,12 @@ impl App {
         }
     }
 
-    fn next(self, event: Event) -> Self {
-        match (&self.state, event) {
+    fn next(self, event: Event) -> Result<Self> {
+        let app = match (&self.state, event) {
             (State::WaitForGame, Event::GameStart(match_info)) => {
-                let device = match rodio::default_output_device() {
-                    Some(device) => device,
-                    None => {
-                        return App {
-                            state: State::Failure("no default output device".to_string()),
-                            ..self
-                        }
-                    }
-                };
-
+                let device = rodio::default_output_device().ok_or(Error::OutputDeviceNotFound)?;
                 let song = self.config.pick_song(match_info.stage);
-
-                let sink = match song.play(&device) {
-                    Ok(sink) => sink,
-                    Err(_) => {
-                        return App {
-                            state: State::Failure("could not obtain audio sink".to_string()),
-                            ..self
-                        }
-                    }
-                };
+                let sink = song.play(&device)?;
 
                 App {
                     state: State::InGame(sink),
@@ -130,13 +119,16 @@ impl App {
             }
             (State::InGame(sink), Event::GameEnd) => {
                 sink.stop();
+
                 App {
                     state: State::WaitForGame,
                     ..self
                 }
             }
             _ => self,
-        }
+        };
+
+        Ok(app)
     }
 }
 
@@ -150,11 +142,13 @@ fn main() -> game::Result<()> {
     let melee = game::Melee::locate()?;
     let event = Event::GameStart(melee.game_info.clone());
 
-    app = app.next(event);
-
-    if let State::Failure(msg) = app.state {
-        println!("{}", msg);
-    }
+    app = match app.next(event) {
+        Ok(app) => app,
+        Err(reason) => {
+            println!("{:?}", reason);
+            panic!();
+        }
+    };
 
     println!("{:?}", melee);
 

@@ -14,7 +14,6 @@ pub enum Error {
     DolphinAccessDenied,
     DolphinNotFound,
     InvalidMemoryRead,
-    SongNotFound,
 }
 
 #[derive(Clone, Debug)]
