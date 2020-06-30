@@ -2,7 +2,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use read_process_memory::{copy_address, TryIntoProcessHandle};
 use serde::{Deserialize, Serialize};
 use std::time;
-use sysinfo::{Pid, ProcessExt, System, SystemExt};
+use sysinfo::{ProcessExt, System, SystemExt};
 
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
 const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
@@ -17,6 +17,12 @@ pub enum Error {
     SongNotFound,
 }
 
+#[derive(Clone, Debug)]
+pub enum Status {
+    InMenu,
+    InGame,
+}
+
 struct LogicalAddress(usize);
 
 struct PhysicalAddress(usize);
@@ -27,15 +33,23 @@ impl From<LogicalAddress> for PhysicalAddress {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
 pub struct StageId(pub u8);
 
-pub struct Dolphin {
-    pid: Pid,
+#[derive(Clone, Debug)]
+pub struct GameInfo {
+    pub time: time::Duration,
+    pub stage: StageId,
+    pub status: Status,
 }
 
-impl Dolphin {
-    pub fn locate() -> Result<Dolphin> {
+#[derive(Debug)]
+pub struct Melee {
+    pub game_info: GameInfo,
+}
+
+impl Melee {
+    pub fn locate() -> Result<Melee> {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -46,64 +60,55 @@ impl Dolphin {
             .map(|(pid, _)| *pid)
             .ok_or(Error::DolphinNotFound)?;
 
-        Ok(Dolphin { pid })
-    }
-
-    pub fn poll_match_info(&self) -> Result<MatchInfo> {
-        let handle = (self.pid as read_process_memory::Pid)
-            .try_into_process_handle()
-            .map_err(|_| Error::DolphinAccessDenied)?;
-
-        let stage = copy_address(
-            PhysicalAddress::from(LogicalAddress(0x8043208B)).0,
-            1,
-            &handle,
-        )
-        .map(|bytes| StageId(bytes[0]))
-        .map_err(|_| Error::InvalidMemoryRead)?;
-
-        let time = copy_address(
-            PhysicalAddress::from(LogicalAddress(0x8046B6C8)).0,
-            4,
-            &handle,
-        )
-        .and_then(|bytes| {
-            println!("{:?}", &bytes);
-            bytes.as_slice().read_u32::<BigEndian>()
-        })
-        .map(|seconds| time::Duration::from_secs(seconds.into()))
-        .map_err(|_| Error::InvalidMemoryRead)?;
-
-        let first_menu_item_byte = copy_address(
-            PhysicalAddress::from(LogicalAddress(0x8136F674)).0,
-            1,
-            &handle,
-        )
-        .map(|bytes| bytes[0])
-        .map_err(|_| Error::InvalidMemoryRead)?; // Complete hack. 0x8136F674 is the first menu item.
-
-        let result = MatchInfo {
-            stage,
-            time,
-            status: match first_menu_item_byte {
-                0x81 => Status::InMenu, // Another hack. If addr starts with 0x81, then menu probably
-                _ => Status::InGame,
-            },
+        let melee = Melee {
+            game_info: poll_match_info(&pid)?,
         };
 
-        Ok(result)
+        Ok(melee)
     }
 }
 
-#[derive(Debug)]
-pub struct MatchInfo {
-    pub time: time::Duration,
-    pub stage: StageId,
-    pub status: Status,
-}
+fn poll_match_info(pid: &sysinfo::Pid) -> Result<GameInfo> {
+    let handle = (*pid as read_process_memory::Pid)
+        .try_into_process_handle()
+        .map_err(|_| Error::DolphinAccessDenied)?;
 
-#[derive(Debug)]
-pub enum Status {
-    InMenu,
-    InGame,
+    let stage = copy_address(
+        PhysicalAddress::from(LogicalAddress(0x8043208B)).0,
+        1,
+        &handle,
+    )
+    .map(|bytes| StageId(bytes[0]))
+    .map_err(|_| Error::InvalidMemoryRead)?;
+
+    let time = copy_address(
+        PhysicalAddress::from(LogicalAddress(0x8046B6C8)).0,
+        4,
+        &handle,
+    )
+    .and_then(|bytes| {
+        println!("{:?}", &bytes);
+        bytes.as_slice().read_u32::<BigEndian>()
+    })
+    .map(|seconds| time::Duration::from_secs(seconds.into()))
+    .map_err(|_| Error::InvalidMemoryRead)?;
+
+    let first_menu_item_byte = copy_address(
+        PhysicalAddress::from(LogicalAddress(0x8136F674)).0,
+        1,
+        &handle,
+    )
+    .map(|bytes| bytes[0])
+    .map_err(|_| Error::InvalidMemoryRead)?; // Complete hack. 0x8136F674 is the first menu item.
+
+    let result = GameInfo {
+        stage,
+        time,
+        status: match first_menu_item_byte {
+            0x81 => Status::InMenu, // Another hack. If addr starts with 0x81, then menu probably
+            _ => Status::InGame,
+        },
+    };
+
+    Ok(result)
 }

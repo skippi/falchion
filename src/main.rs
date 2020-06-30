@@ -53,39 +53,107 @@ enum Song {
 }
 
 impl Song {
-    fn play(&self, device: &rodio::Device) -> game::Result<()> {
+    fn play(&self, device: &rodio::Device) -> game::Result<rodio::Sink> {
         match self {
             Song::Local(path) => {
                 let file = File::open(path).map_err(|_| Error::SongNotFound)?;
                 rodio::play_once(&device, BufReader::new(file))
-                    .unwrap()
-                    .sleep_until_end()
+                    .map_err(|_| game::Error::DolphinNotFound)
             }
         }
+    }
+}
 
-        Ok(())
+enum Event {
+    GameStart(game::GameInfo),
+    GameEnd,
+}
+
+struct App {
+    config: Config,
+    state: State,
+}
+
+enum State {
+    WaitForGame,
+    InGame(rodio::Sink),
+    Failure(String),
+}
+
+impl App {
+    fn new() -> Self {
+        App {
+            config: Config::open_or_create("config.json").unwrap_or(Config::spoof()),
+            state: State::WaitForGame,
+        }
+    }
+
+    fn next(self, event: Event) -> Self {
+        match (&self.state, event) {
+            (State::WaitForGame, Event::GameStart(match_info)) => {
+                let device = match rodio::default_output_device() {
+                    Some(device) => device,
+                    None => {
+                        return App {
+                            state: State::Failure("no default output device".to_string()),
+                            ..self
+                        }
+                    }
+                };
+
+                let songs = self
+                    .config
+                    .playlists
+                    .get(&match_info.stage)
+                    .map(|s| s.as_slice())
+                    .unwrap_or(&[]);
+
+                let song = songs.iter().next().unwrap();
+
+                let sink = match song.play(&device) {
+                    Ok(sink) => sink,
+                    Err(_) => {
+                        return App {
+                            state: State::Failure("could not obtain audio sink".to_string()),
+                            ..self
+                        }
+                    }
+                };
+
+                App {
+                    state: State::InGame(sink),
+                    ..self
+                }
+            }
+            (State::InGame(sink), Event::GameEnd) => {
+                sink.stop();
+                App {
+                    state: State::WaitForGame,
+                    ..self
+                }
+            }
+            _ => self,
+        }
     }
 }
 
 fn main() -> game::Result<()> {
-    let config = Config::open_or_create("config.json").unwrap_or(Config::spoof());
+    let mut app = App::new();
 
-    if let Err(e) = config.save("config.json") {
+    if let Err(e) = app.config.save("config.json") {
         panic!(e);
     }
 
-    let device = rodio::default_output_device().unwrap();
+    let melee = game::Melee::locate()?;
+    let event = Event::GameStart(melee.game_info.clone());
 
-    let game = game::Dolphin::locate()?;
-    let match_info = game.poll_match_info()?;
-    let songs = config
-        .playlists
-        .get(&match_info.stage)
-        .map(|s| s.as_slice())
-        .unwrap_or(&[]);
+    app = app.next(event);
 
-    println!("{:?}", match_info);
+    if let State::Failure(msg) = app.state {
+        println!("{}", msg);
+    }
 
-    let song = songs.iter().next().ok_or(Error::SongNotFound)?;
-    song.play(&device)
+    println!("{:?}", melee);
+
+    loop {}
 }
