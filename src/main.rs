@@ -37,6 +37,16 @@ impl Config {
 
         default_config
     }
+
+    fn pick_song(&self, stage: game::StageId) -> &Song {
+        let songs = self
+            .playlists
+            .get(&stage)
+            .map(|s| s.as_slice())
+            .unwrap_or(&[]);
+
+        songs.iter().next().unwrap()
+    }
 }
 
 impl Default for Config {
@@ -101,14 +111,7 @@ impl App {
                     }
                 };
 
-                let songs = self
-                    .config
-                    .playlists
-                    .get(&match_info.stage)
-                    .map(|s| s.as_slice())
-                    .unwrap_or(&[]);
-
-                let song = songs.iter().next().unwrap();
+                let song = self.config.pick_song(match_info.stage);
 
                 let sink = match song.play(&device) {
                     Ok(sink) => sink,
