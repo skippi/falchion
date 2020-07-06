@@ -48,12 +48,14 @@ impl Poll<StageId> for Melee {
 
 impl Poll<Status> for Melee {
     fn poll(&self) -> io::Result<Status> {
-        // 0x8136F674 is the offset of first menu item in heap memory
-        self.memread(LogicalAddress(0x8136F674), 1)
-            .map(|bytes| match bytes[0] {
-                0x81 => Status::InMenu, // 0x81 likely means heap alloc
-                _ => Status::InGame,
-            })
+        let pause_byte = self.memread(LogicalAddress(0x80479D68), 1)?[0];
+        let ingame_byte = self.memread(LogicalAddress(0x80479D88), 1)?[0];
+        let status = match (ingame_byte, pause_byte) {
+            (_, 0x10) => Status::InMenu, // 0x02 paused, 0x10 game ended
+            (0, _) => Status::InMenu,    // 0 in menu, some address otherwise
+            _ => Status::InGame,
+        };
+        Ok(status)
     }
 }
 
