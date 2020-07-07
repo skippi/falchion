@@ -51,9 +51,10 @@ impl Poll<Status> for Melee {
         let pause_byte = self.memread(LogicalAddress(0x80479D68), 1)?[0];
         let ingame_byte = self.memread(LogicalAddress(0x80479D88), 1)?[0];
         let status = match (ingame_byte, pause_byte) {
-            (_, 0x10) => Status::InMenu, // 0x02 paused, 0x10 game ended
-            (0, _) => Status::InMenu,    // 0 in menu, some address otherwise
-            _ => Status::InGame,
+            (_, 0x10) => Status::Menu, // 0x02 paused, 0x10 game ended
+            (_, 0x02) => Status::Paused,
+            (0, _) => Status::Menu, // 0 in menu, some address otherwise
+            _ => Status::Playing,
         };
         Ok(status)
     }
@@ -77,8 +78,9 @@ pub struct StageId(pub u8);
 
 #[derive(Clone, Debug)]
 pub enum Status {
-    InMenu,
-    InGame,
+    Menu,
+    Playing,
+    Paused,
 }
 
 #[derive(Clone, Debug)]

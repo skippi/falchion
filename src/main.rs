@@ -7,7 +7,10 @@ use std::time::Duration;
 use std::{io, thread};
 
 use crate::data::Config;
-use crate::event::{Advance, Detect, Event, GameJoinEvent, GameLeaveEvent, TryAdvance};
+use crate::event::{
+    Advance, Detect, Event, GameJoinEvent, GameLeaveEvent, GamePauseEvent, GameResumeEvent,
+    TryAdvance,
+};
 use crate::melee::{GameInfo, Melee, Poll};
 
 enum App {
@@ -25,6 +28,8 @@ impl TryAdvance<Event> for App {
         let new_app = match (self, tag) {
             (Waiting(state), GameJoin(event)) => Playing(state.try_advance(event)?),
             (Playing(state), GameLeave(event)) => Waiting(state.advance(event)),
+            (Playing(state), GamePause(event)) => Playing(state.advance(event)),
+            (Playing(state), GameResume(event)) => Playing(state.advance(event)),
             (app, _) => app,
         };
         Ok(new_app)
@@ -55,6 +60,24 @@ impl Advance<GameLeaveEvent> for Playing {
     fn advance(self, _: GameLeaveEvent) -> Self::Output {
         self.0.stop();
         Waiting
+    }
+}
+
+impl Advance<GamePauseEvent> for Playing {
+    type Output = Playing;
+
+    fn advance(self, _: GamePauseEvent) -> Self::Output {
+        self.0.set_volume(0.35);
+        self
+    }
+}
+
+impl Advance<GameResumeEvent> for Playing {
+    type Output = Playing;
+
+    fn advance(self, _: GameResumeEvent) -> Self::Output {
+        self.0.set_volume(1.0);
+        self
     }
 }
 

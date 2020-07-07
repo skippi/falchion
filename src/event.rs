@@ -14,8 +14,10 @@ impl Detect<Event> for GameInfo {
         use Event::*;
         use Status::*;
         match (&self.status, &new.status) {
-            (InGame, InMenu) => vec![GameLeave(GameLeaveEvent)],
-            (InMenu, InGame) => vec![GameJoin(GameJoinEvent { info: new.clone() })],
+            (Playing, Paused) => vec![GamePause(GamePauseEvent)],
+            (Paused, Playing) => vec![GameResume(GameResumeEvent)],
+            (Playing, Menu) | (Paused, Menu) => vec![GameLeave(GameLeaveEvent)],
+            (Menu, Playing) => vec![GameJoin(GameJoinEvent { info: new.clone() })],
             _ => vec![],
         }
     }
@@ -30,6 +32,8 @@ pub trait TryAdvance<T> {
 pub enum Event {
     GameJoin(GameJoinEvent),
     GameLeave(GameLeaveEvent),
+    GamePause(GamePauseEvent),
+    GameResume(GameResumeEvent),
 }
 
 pub struct GameLeaveEvent;
@@ -37,3 +41,7 @@ pub struct GameLeaveEvent;
 pub struct GameJoinEvent {
     pub info: GameInfo,
 }
+
+pub struct GamePauseEvent;
+
+pub struct GameResumeEvent;
