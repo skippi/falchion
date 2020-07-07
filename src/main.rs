@@ -48,7 +48,9 @@ impl TryAdvance<GameJoinEvent> for Waiting {
             .pick_song(tag.info.stage)
             .ok_or(io::Error::new(io::ErrorKind::NotFound, "no song found"))?;
         let device = rodio::default_output_device().unwrap();
-        Ok(Playing(song.play(&device)?))
+        let sink = song.play(&device)?;
+        sink.set_volume(0.5);
+        Ok(Playing(sink))
     }
 }
 
@@ -67,7 +69,7 @@ impl Advance<GamePauseEvent> for Playing {
     type Output = Playing;
 
     fn advance(self, _: GamePauseEvent) -> Self::Output {
-        self.0.set_volume(0.35);
+        self.0.set_volume(0.5 * 0.2); // 0x804D388B volume address
         self
     }
 }
@@ -76,7 +78,7 @@ impl Advance<GameResumeEvent> for Playing {
     type Output = Playing;
 
     fn advance(self, _: GameResumeEvent) -> Self::Output {
-        self.0.set_volume(1.0);
+        self.0.set_volume(0.5);
         self
     }
 }
