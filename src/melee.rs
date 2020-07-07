@@ -41,7 +41,7 @@ impl Poll<Time> for Melee {
 
 impl Poll<StageId> for Melee {
     fn poll(&self) -> io::Result<StageId> {
-        self.memread(LogicalAddress(0x8043208B), 1)
+        self.memread(LogicalAddress(0x80432087), 1)
             .map(|bytes| StageId(bytes[0]))
     }
 }
