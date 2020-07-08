@@ -7,11 +7,9 @@ use std::time::Duration;
 use std::{io, thread};
 
 use crate::data::Config;
-use crate::event::{
-    Advance, Detect, Event, GameJoinEvent, GameLeaveEvent, GamePauseEvent, GameResumeEvent,
-    TryAdvance,
-};
-use crate::melee::{GameInfo, Melee, Poll};
+use crate::dolphin::Poll;
+use crate::event::{Advance, Detect, Event, GameJoinEvent, GameLeaveEvent, TryAdvance};
+use crate::melee::{GameInfo, Melee, Status};
 
 enum App {
     Waiting(Waiting),
@@ -28,9 +26,20 @@ impl TryAdvance<Event> for App {
         let new_app = match (self, tag) {
             (Waiting(state), GameJoin(event)) => Playing(state.try_advance(event)?),
             (Playing(state), GameLeave(event)) => Waiting(state.advance(event)),
-            (Playing(state), GamePause(event)) => Playing(state.advance(event)),
-            (Playing(state), GameResume(event)) => Playing(state.advance(event)),
             (app, _) => app,
+        };
+        Ok(new_app)
+    }
+}
+
+impl TryAdvance<TickEvent> for App {
+    type Error = io::Error;
+    type Output = App;
+
+    fn try_advance(self, tag: TickEvent) -> Result<Self::Output, Self::Error> {
+        let new_app = match self {
+            App::Playing(state) => App::Playing(state.try_advance(tag)?),
+            app => app,
         };
         Ok(new_app)
     }
@@ -49,7 +58,6 @@ impl TryAdvance<GameJoinEvent> for Waiting {
             .ok_or(io::Error::new(io::ErrorKind::NotFound, "no song found"))?;
         let device = rodio::default_output_device().unwrap();
         let sink = song.play(&device)?;
-        sink.set_volume(0.5);
         Ok(Playing(sink))
     }
 }
@@ -65,22 +73,24 @@ impl Advance<GameLeaveEvent> for Playing {
     }
 }
 
-impl Advance<GamePauseEvent> for Playing {
+impl TryAdvance<TickEvent> for Playing {
+    type Error = io::Error;
     type Output = Playing;
 
-    fn advance(self, _: GamePauseEvent) -> Self::Output {
-        self.0.set_volume(0.5 * 0.2); // 0x804D388B volume address
-        self
+    fn try_advance(self, tag: TickEvent) -> Result<Self::Output, Self::Error> {
+        let master_volume = 0.5;
+        let status: Status = tag.melee.poll()?;
+        let paused_volume_multiplier = match status {
+            Status::Paused => 0.2, // 0x804D388B volume address
+            _ => 1.0,
+        };
+        self.0.set_volume(master_volume * paused_volume_multiplier);
+        Ok(self)
     }
 }
 
-impl Advance<GameResumeEvent> for Playing {
-    type Output = Playing;
-
-    fn advance(self, _: GameResumeEvent) -> Self::Output {
-        self.0.set_volume(0.5);
-        self
-    }
+struct TickEvent {
+    melee: Melee,
 }
 
 fn main() {
@@ -101,6 +111,12 @@ fn step() -> io::Result<()> {
         let events: Vec<Event> = game.detect(&new_game);
         app = events.into_iter().try_fold(app, App::try_advance)?;
         game = new_game;
+        app = App::try_advance(
+            app,
+            TickEvent {
+                melee: melee.clone(),
+            },
+        )?;
         thread::sleep(Duration::from_millis(5));
     }
 }

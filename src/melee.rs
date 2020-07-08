@@ -1,15 +1,11 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use serde::{Deserialize, Serialize};
-use std::{io, time};
+use std::io;
 use sysinfo::SystemExt;
 
-use crate::dolphin::{DolphinHandle, LogicalAddress, ReadDolphinMemory};
+use crate::dolphin::{DolphinHandle, LogicalAddress, Poll, ReadDolphinMemory};
 
-pub trait Poll<T> {
-    fn poll(&self) -> io::Result<T>;
-}
-
-pub struct Melee(DolphinHandle);
+#[derive(Clone)]
+pub struct Melee(pub DolphinHandle);
 
 impl Melee {
     pub fn connect() -> io::Result<Melee> {
@@ -23,25 +19,15 @@ impl Poll<GameInfo> for Melee {
     fn poll(&self) -> io::Result<GameInfo> {
         let result = GameInfo {
             stage: self.poll()?,
-            time: self.poll()?,
             status: self.poll()?,
         };
         Ok(result)
     }
 }
 
-impl Poll<Time> for Melee {
-    fn poll(&self) -> io::Result<Time> {
-        self.memread(LogicalAddress(0x8046B6C8), 4)
-            .and_then(|bytes| bytes.as_slice().read_u32::<BigEndian>())
-            .map(|seconds| time::Duration::from_secs(seconds.into()))
-            .map(Time::from)
-    }
-}
-
 impl Poll<StageId> for Melee {
     fn poll(&self) -> io::Result<StageId> {
-        self.memread(LogicalAddress(0x80432087), 1)
+        self.memread(LogicalAddress(0x8045AC67), 1)
             .map(|bytes| StageId(bytes[0]))
     }
 }
@@ -68,7 +54,6 @@ impl ReadDolphinMemory for Melee {
 
 #[derive(Clone, Debug)]
 pub struct GameInfo {
-    pub time: Time,
     pub stage: StageId,
     pub status: Status,
 }
@@ -81,13 +66,4 @@ pub enum Status {
     Menu,
     Playing,
     Paused,
-}
-
-#[derive(Clone, Debug)]
-pub struct Time(time::Duration);
-
-impl From<time::Duration> for Time {
-    fn from(duration: time::Duration) -> Self {
-        Time(duration)
-    }
 }

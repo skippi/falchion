@@ -5,10 +5,15 @@ use sysinfo::{ProcessExt, SystemExt};
 const LOGICAL_BASE_ADDRESS: LogicalAddress = LogicalAddress(0x80000000);
 const PHYSICAL_BASE_ADDRESS: PhysicalAddress = PhysicalAddress(0x7FFF0000);
 
+pub trait Poll<T> {
+    fn poll(&self) -> io::Result<T>;
+}
+
 pub trait ReadDolphinMemory {
     fn memread(&self, address: LogicalAddress, size: usize) -> io::Result<Vec<u8>>;
 }
 
+#[derive(Clone)]
 pub struct DolphinHandle(read_process_memory::ProcessHandle);
 
 impl DolphinHandle {
