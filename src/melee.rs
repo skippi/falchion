@@ -17,11 +17,11 @@ impl Melee {
 
 impl Poll<GameInfo> for Melee {
     fn poll(&self) -> io::Result<GameInfo> {
-        let result = GameInfo {
+        let info = GameInfo {
             stage: self.poll()?,
             status: self.poll()?,
         };
-        Ok(result)
+        Ok(info)
     }
 }
 
@@ -58,7 +58,7 @@ pub struct GameInfo {
     pub status: Status,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct StageId(pub u8);
 
 #[derive(Clone, Debug)]
