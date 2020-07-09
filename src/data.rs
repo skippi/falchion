@@ -1,3 +1,4 @@
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
@@ -24,12 +25,11 @@ impl Config {
     }
 
     pub fn pick_song(&self, stage: StageId) -> Option<Song> {
-        let songs = self
-            .playlists
+        let mut rng = rand::thread_rng();
+        self.playlists
             .get(&stage)
-            .map(|s| s.as_slice())
-            .unwrap_or(&[]);
-        songs.iter().cloned().next()
+            .and_then(|songs| songs.as_slice().choose(&mut rng))
+            .map(Clone::clone)
     }
 }
 
