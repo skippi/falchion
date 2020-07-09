@@ -28,20 +28,31 @@ impl Config {
         let mut rng = rand::thread_rng();
         self.playlists
             .get(&stage)
-            .and_then(|songs| songs.as_slice().choose(&mut rng))
+            .and_then(|songs| {
+                songs
+                    .as_slice()
+                    .choose_weighted(&mut rng, |song| song.chance)
+                    .ok()
+            })
             .map(Clone::clone)
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Song {
+    chance: f32,
+    source: Source,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Song {
+pub enum Source {
     Local(String),
 }
 
 impl Song {
     pub fn play(&self, device: &rodio::Device) -> io::Result<rodio::Sink> {
-        match self {
-            Song::Local(path) => {
+        match &self.source {
+            Source::Local(path) => {
                 let file = File::open(path)?;
                 rodio::play_once(&device, BufReader::new(file))
                     .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))
